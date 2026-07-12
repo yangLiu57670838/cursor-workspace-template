@@ -1,0 +1,7 @@
+---
+description: MUI UI design system — colors, typography, layout, and component patterns
+globs: "**/*.{tsx,css}"
+alwaysApply: false
+---
+
+Follow [docs/design.md](../../docs/design.md).
