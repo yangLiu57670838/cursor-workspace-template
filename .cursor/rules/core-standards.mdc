@@ -1,0 +1,12 @@
+---
+description: Core project standards for the Cursor workspace template
+alwaysApply: true
+---
+
+# Core standards
+
+- Keep changes minimal and focused on the requested task
+- Match existing file formats in `.cursor/rules/`, `.cursor/skills/`, and `.cursor/hooks/`
+- Do not add dependencies or build tooling unless explicitly requested
+- Document new Cursor config in README.md when adding user-facing behavior
+- Prefer complete sentences in markdown docs; avoid telegraphic bullet chains
