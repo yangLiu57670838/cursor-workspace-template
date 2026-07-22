@@ -77,6 +77,11 @@ Skip checklist rows that clearly do not apply to a file (e.g. no a11y notes for 
 ### Findings
 - [Blocker|Major|Minor|Nit] `path` — finding; why it matters; suggested fix
 
+### PRD / acceptance
+- Met: ...
+- Gaps: ...
+- Out of scope in diff: ...
+
 ### Summary
 - Ship / fix before merge / needs discussion
 ```
