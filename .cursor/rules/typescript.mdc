@@ -1,0 +1,50 @@
+---
+description: TypeScript coding standards
+globs: "**/*.ts,**/*.tsx"
+alwaysApply: false
+---
+
+# TypeScript standards
+
+## Type safety
+
+- Follow the strictness settings in `tsconfig.json`.
+- Do not introduce `any`; use a precise type or `unknown` with explicit narrowing.
+- Do not use type assertions merely to suppress type errors.
+- Handle `null` and `undefined` explicitly.
+- Prefer discriminated unions for related state variants.
+- Add explicit return types to exported functions and public APIs.
+- Allow inferred return types for clear local functions and callbacks.
+
+## Naming
+
+- Prefix interfaces with `I` and use `PascalCase`, such as `IUser` and `IUserRepository`.
+- Do not add the `I` prefix to type aliases, classes or enums.
+- Name type aliases, classes and enums in `PascalCase`, such as `UserRole`.
+- Name functions, variables and properties in `camelCase`.
+- Use `UPPER_SNAKE_CASE` only for true module-level constants.
+- Prefix booleans with `is`, `has`, `can` or `should`.
+- Use descriptive names; avoid abbreviations unless they are established domain terms.
+
+## Functions and data
+
+- Prefer `const`; use `let` only when reassignment is necessary.
+- Prefer immutable updates over mutating shared state.
+- Keep functions focused and clearly named.
+- Validate and narrow untrusted data at system boundaries.
+- Handle union variants exhaustively, using a `never` check when useful.
+
+## Imports and modules
+
+- Group imports as external, internal and type-only imports.
+- Use `import type` for type-only dependencies.
+- Follow the project's configured path aliases.
+- Avoid circular dependencies.
+- Add barrel exports only for deliberate public APIs.
+- Remove unused imports and exports.
+
+## Scope
+
+- Follow established conventions in the surrounding code.
+- Avoid unrelated refactoring.
+- Make the smallest complete change required by the task.
