@@ -1,6 +1,6 @@
 ---
 description: TypeScript conventions for src/
-globs: src/**/*.ts
+globs: "**/*.ts"
 alwaysApply: false
 ---
 

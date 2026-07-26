@@ -1,0 +1,82 @@
+---
+description: Unit-testing standards for React TypeScript with Jest and Testing Library
+globs: "**/*.test.ts,**/*.test.tsx"
+alwaysApply: false
+---
+
+# Unit Testing Rules
+
+Stack: Jest, React Testing Library, `@testing-library/user-event`, `@testing-library/jest-dom`.
+Colocate tests as `ComponentName.test.tsx` next to the unit under test.
+Run with `pnpm test`.
+
+## Principles
+
+- Test observable behavior from the user’s perspective, not implementation details.
+- Prefer accessible queries: `getByRole`, `getByLabelText`, `getByText`.
+- Avoid CSS classes, DOM structure, and `data-testid` unless no accessible query works.
+- One clear behavior per `it`; use Arrange–Act–Assert.
+- Name tests by outcome: `it("disables submission while the request is pending", ...)`.
+- Keep tests deterministic and independent; reset mocks in `beforeEach` when shared.
+- Do not use snapshots when an explicit assertion is practical.
+
+## React components
+
+- Render with the smallest realistic props and providers.
+- Cover initial render, interactions, loading/error/empty states, and important edge cases.
+- Use `userEvent.setup()` and `await` every interaction.
+- Prefer `findBy*` / `waitFor` for async UI; avoid arbitrary `setTimeout`.
+- Assert accessibility semantics where relevant (roles, labels, disabled, expanded).
+- Do not call component methods or inspect React internals.
+
+## Async, network, and BFF
+
+- Mock at the boundary (`fetch`, API/BFF client). Do not mock hooks or helper functions.
+- For async responses, assert not only the happy path — cover success, fail, and pending when those states exist.
+- When UI renders after async work, prefer `await screen.findBy...` over `waitFor`.
+
+## Feature toggles
+
+- When behavior depends on a feature flag, test **both** enabled and disabled.
+- Assert what appears, what is hidden, and what interactions do in each state.
+- Set the flag explicitly in arrange; do not rely on ambient defaults alone.
+
+## Mocks
+
+- Prefer `jest.fn()` and `jest.spyOn` over heavy module mocks when a callback/prop suffices.
+- Mock only what the test needs; restore spies after use when not using clear/reset defaults.
+
+```tsx
+it("submits the entered email", async () => {
+  const user = userEvent.setup()
+  const onSubmit = jest.fn()
+
+  render(<SignupForm onSubmit={onSubmit} />)
+
+  await user.type(
+    screen.getByRole("textbox", { name: /email/i }),
+    "user@example.com",
+  )
+  await user.click(screen.getByRole("button", { name: /sign up/i }))
+
+  expect(onSubmit).toHaveBeenCalledWith({
+    email: "user@example.com",
+  })
+})
+
+it("shows the new editor when the feature flag is enabled", () => {
+  render(<DocPage featureFlags={{ richEditorV2: true }} />)
+
+  expect(
+    screen.getByRole("toolbar", { name: /formatting/i }),
+  ).toBeInTheDocument()
+})
+
+it("hides the new editor when the feature flag is disabled", () => {
+  render(<DocPage featureFlags={{ richEditorV2: false }} />)
+
+  expect(
+    screen.queryByRole("toolbar", { name: /formatting/i }),
+  ).not.toBeInTheDocument()
+})
+```
