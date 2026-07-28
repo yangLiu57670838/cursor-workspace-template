@@ -1,0 +1,175 @@
+---
+description: React Context API design, performance, and testing standards
+globs: "**/context/**/*.ts,**/context/**/*.tsx,**/contexts/**/*.ts,**/contexts/**/*.tsx,**/*Context.ts,**/*Context.tsx,**/*Provider.ts,**/*Provider.tsx,**/use*Context.ts,**/use*Context.tsx"
+alwaysApply: false
+---
+
+# React Context API rules
+
+Treat Context as a **dependency-injection and shared-state boundary**, not a default state manager. Prefer local state, composition, and props until Context clearly pays for itself.
+
+## When to use Context
+
+Use Context when many distant consumers need the same value, such as:
+
+- Auth / session
+- Theme, locale, density
+- Feature flags
+- A shared domain workflow (for example document editor session UI)
+- Stable app services (analytics, BFF clients) that should not be prop-drilled
+
+Do **not** introduce Context when:
+
+- Only a parent and its direct children need the value
+- Props or composition keep ownership clear
+- The data is remote/server state better owned by a fetch layer / BFF client + local UI state
+- The value updates very frequently across a wide tree (pointer move, keystroke, animation frame)
+
+## API design
+
+- One domain per context; avoid a single global “AppContext”.
+- Keep the public surface small and semantic (`signIn`, `saveDocument`), not raw setters.
+- For API-driven flows, update status inside the provider from the request lifecycle (`pending` → `success` / `error`). Export safe actions only; do not let consumers set status directly from the API response.
+- Hide other implementation details (reducer, `dispatch`, action unions) unless a consumer truly needs them.
+- Split unrelated concerns into separate providers.
+- Prefer `state` + `actions` split only when it **measurably** reduces rerenders or clarifies ownership.
+- Network I/O belongs in BFF/API modules; Context may orchestrate UI status, not own HTTP details.
+
+## Type-safe provider pattern
+
+- Type the context value explicitly; never `any`.
+- Default to `undefined` when a provider is required.
+- Do not ship a fake default that silently hides a missing provider.
+- Export a custom hook; do not scatter `useContext` calls.
+- The hook must throw a clear error outside the provider.
+- Give exported hooks an explicit return type.
+
+```tsx
+import {
+  createContext,
+  type PropsWithChildren,
+  useContext,
+  useMemo,
+  useState,
+} from 'react'
+
+type User = {
+  id: string
+  name: string
+}
+
+type AuthContextValue = {
+  user: User | null
+  signIn: (user: User) => void
+  signOut: () => void
+}
+
+const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+
+export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
+  const [user, setUser] = useState<User | null>(null)
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      signIn: setUser,
+      signOut: () => setUser(null),
+    }),
+    [user],
+  )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth(): AuthContextValue {
+  const context = useContext(AuthContext)
+
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+
+  return context
+}
+```
+
+## Performance
+
+- Context consumers rerender when the **provider value identity** changes. Own that cost deliberately.
+- Memoize the provider `value`; never pass a fresh inline object/function every render.
+- Keep high-frequency writes out of broad contexts (editor caret, mouse coords, per-keystroke draft text if it fans out widely).
+- Colocate fast-changing state near the leaf; lift only what must be shared.
+- If a context causes wide rerender churn, split providers, narrow the value, or move state down — do not paper over it with memoization everywhere.
+- Memoization order: first keep the provider value stable and small; then memoize a consumer only when profiling shows that leaf is expensive; do not sprinkle `useMemo`/`useCallback` everywhere “just in case.”
+
+## Complex state
+
+- Prefer `useReducer` + discriminated union actions for multi-step or multi-field workflows.
+- Keep actions domain-named and exhaustively handled.
+- Update immutably; do not mutate shared state in place.
+- Model async UI explicitly (`idle | pending | success | error`) when the provider drives load/save flows.
+
+```tsx
+type Status = 'idle' | 'pending' | 'success' | 'error'
+type State = { email: string; status: Status }
+type Action =
+  | { type: 'emailChanged'; email: string }
+  | { type: 'submitStarted' }
+  | { type: 'submitSucceeded' }
+  | { type: 'submitFailed' }
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'emailChanged':
+      return { ...state, email: action.email }
+    case 'submitStarted':
+      return { ...state, status: 'pending' }
+    case 'submitSucceeded':
+      return { ...state, status: 'success' }
+    case 'submitFailed':
+      return { ...state, status: 'error' }
+    default: {
+      const _exhaustive: never = action
+      return _exhaustive
+    }
+  }
+}
+
+// In the provider: useReducer + export submit(), never export dispatch.
+const submit = async () => {
+  dispatch({ type: 'submitStarted' })
+  try {
+    await postCheckout(state.email)
+    dispatch({ type: 'submitSucceeded' })
+  } catch {
+    dispatch({ type: 'submitFailed' })
+  }
+}
+```
+
+## Composition and providers
+
+- Nest providers by domain (`FeatureFlags` → `Auth` → `DocumentSession`).
+- Do not create deep provider pyramids for convenience; each layer needs a clear reason.
+- Providers must remain usable in tests and Storybook without the full app shell.
+
+## Testing
+
+- Prefer rendering consumers under the real provider with controlled inputs.
+- Assert observable UI/behavior, not private context internals.
+- Cover missing-provider failure for the custom hook.
+- For async context flows, cover pending, success, and failure — not only the happy path.
+- Mock at the BFF/API boundary, not reducer helpers or consumer hooks.
+
+## Accessibility and product quality
+
+- Context-driven UI changes must preserve roles, labels, focus order, and keyboard paths.
+- Feature-flagged UI exposed via context must be testable in **both** flag states.
+
+## Anti-patterns
+
+- God-context holding unrelated slices of the app
+- Fake defaults that mask provider wiring bugs
+- Putting fetch/cache logic inside Context instead of the data layer
+- Using Context to avoid designing component APIs
+- Many providers split “for performance” with little gain and higher maintenance cost
+- Exporting the raw context object as the primary public API
