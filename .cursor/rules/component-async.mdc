@@ -1,0 +1,130 @@
+---
+description: Async React component and hook patterns for senior frontend work — API requests, mutations, state modelling, cancellation, race conditions, accessibility, and testing
+globs: "**/*.tsx,**/hooks/**/*.ts,**/hooks/**/*.tsx"
+alwaysApply: false
+---
+
+# React Component Async Pattern
+
+Build async behavior with explicit states, safe cancellation, accessible feedback, and deterministic tests. Every async operation should be impossible to misread from the UI.
+
+## State owner — choose deliberately
+
+| What | Owner |
+| --- | --- |
+| Component-specific fetch or mutation | Local `useState` / `useReducer` |
+| Shareable filters, pagination, search | URL state |
+| Server state with caching, retries, invalidation | Query library (React Query, SWR, RTK Query) |
+| Cross-cutting stable shared state | Context |
+| High-frequency writes (canvas frame, pointer) | Ref or external store |
+
+Do not copy server/query results into local state without a concrete reason. That creates a stale second source of truth.
+
+## Model async states explicitly
+
+Every user-visible async operation must account for all reachable states:
+
+- `idle` — nothing started yet
+- `pending` — request in flight
+- `success` — data ready
+- `empty` — request succeeded, but result set is empty (needs its own UI)
+- `error` — request failed; expose recoverable path where possible
+- `refreshing` — stale data still shown while new request runs
+
+Use a discriminated union, not independent booleans. Independent booleans can represent impossible states (`isLoading: true` + `isError: true`).
+
+```tsx
+type AsyncState<T> =
+  | { status: 'idle' }
+  | { status: 'pending' }
+  | { status: 'success'; data: T }
+  | { status: 'empty' }
+  | { status: 'error'; message: string }
+
+// In the switch, TypeScript ensures T is only accessible in 'success'
+```
+
+## Cancellation and race conditions
+
+- Cancel stale requests when a component unmounts or deps change before the response arrives.
+- Use `AbortController` with `fetch`; pass the signal through your BFF client.
+- For query libraries, they handle this — do not duplicate.
+- Never call `setState` after unmount; gate with `isMounted` ref or rely on cleanup.
+
+```tsx
+useEffect(() => {
+  const controller = new AbortController()
+
+  fetchData({ signal: controller.signal })
+    .then(setData)
+    .catch((err) => {
+      if (err.name !== 'AbortError') setError(err)
+    })
+
+  return () => controller.abort()
+}, [id])
+```
+
+## Auto-save / debounced mutations
+
+- Debounce writes; do not fire a request per keystroke.
+- Show explicit `pending → success / error` status — never silently lose a save.
+- On error, surface a retry path; do not reset the user's content.
+- Flush pending debounced writes on unmount or navigation.
+
+## Error handling
+
+- Distinguish recoverable (show retry) from unrecoverable (show hard error).
+- Never swallow errors silently.
+- Preserve user input on failure.
+- Surface meaningful messages; do not show raw server error strings.
+
+## Accessibility for async UI
+
+- Announce loading and completion states to screen readers using `role="status"` or `aria-live="polite"`.
+- Keep interactive controls and focus stable during transitions.
+- Disable or show progress on submit buttons during pending state.
+- Provide a visible retry action when recoverable errors occur.
+
+```tsx
+{state.status === 'pending' && (
+  <span role="status" aria-live="polite">Saving…</span>
+)}
+{state.status === 'error' && (
+  <p role="alert">{state.message} <button onClick={retry}>Retry</button></p>
+)}
+```
+
+## Testing async components
+
+- Mock at the boundary (`fetch`, BFF/API client module). Do not mock hooks or internal helpers.
+- Assert all states: pending, success, error, and empty.
+- Use `await screen.findBy…` when UI changes after async work; prefer it over `waitFor` for element assertions.
+- Pass `AbortSignal` into mocks; assert cleanup fires on unmount.
+
+```tsx
+it("shows an error message when the request fails", async () => {
+  jest.spyOn(api, 'fetchUser').mockRejectedValue(new Error('Network error'))
+
+  render(<UserProfile id="1" />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Network error')
+})
+
+it("shows the loading state while the request is in flight", () => {
+  jest.spyOn(api, 'fetchUser').mockReturnValue(new Promise(() => {}))
+
+  render(<UserProfile id="1" />)
+
+  expect(screen.getByRole('status')).toHaveTextContent(/loading/i)
+})
+```
+
+## Anti-patterns
+
+- Independent `isLoading` + `isError` booleans (impossible states)
+- `setState` after unmount without cleanup
+- Silently swallowed errors or lost saves
+- Copying remote data into local state then keeping it in sync manually
+- `setTimeout` instead of `waitFor` / `findBy` in tests
+- New fetching library introduced for one component
