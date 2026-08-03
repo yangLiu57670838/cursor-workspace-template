@@ -1,0 +1,114 @@
+---
+description: React accessibility standards — semantics, keyboard, focus, ARIA, async announcements, forms, and testing
+globs: "**/*.tsx,**/*.css"
+alwaysApply: false
+---
+
+# Accessibility (React)
+
+Ship UI that works with keyboard, screen readers, and assistive tech by default. Prefer correct HTML semantics over ARIA patches. Be ready to explain tradeoffs out loud.
+
+## Core principle
+
+**Semantic HTML first → keyboard and focus next → ARIA only when HTML is not enough.**
+
+Do not add `role` / `aria-*` to fix bad markup when a native element already provides the behavior.
+
+## Semantics
+
+- Use the correct element: `button`, `a`, `input`, `label`, `nav`, `main`, `header`, `ul`/`li`, headings in order.
+- Do not make `div` / `span` clickable when a `button` or `a` is correct.
+- Links navigate; buttons trigger actions. Do not mix them.
+- One `h1` per view; do not skip heading levels for styling.
+- Decorative images: empty `alt=""`. Meaningful images: descriptive `alt`.
+- Icon-only controls need a name on the control (`aria-label` or visually hidden text). Mark the decorative icon `aria-hidden="true"` so assistive tech does not announce it twice or read SVG junk.
+
+```tsx
+// Bad
+<div onClick={save}>Save</div>
+
+// Good
+<button type="button" onClick={save}>Save</button>
+
+// Icon-only
+<button type="button" aria-label="Close dialog" onClick={onClose}>
+  <CloseIcon aria-hidden="true" />
+</button>
+```
+
+## Keyboard and focus
+
+- Every interactive control must be reachable and operable with keyboard (`Tab`, `Enter`/`Space`, arrows where expected).
+- Do not remove focus outlines without a visible replacement (`:focus-visible`).
+- Manage focus when UI appears or disappears (dialogs, menus, drawers, route changes).
+- On dialog open: move focus into the dialog. On close: restore focus to the trigger.
+- Trap focus inside modal dialogs; `Escape` should close when that is the platform pattern.
+- After destructive or async actions, do not leave focus on a removed node.
+
+## ARIA — use sparingly
+
+- Prefer native elements over `role="button"`, `role="link"`, etc.
+- Common valid uses: `aria-label` / `aria-labelledby`, `aria-describedby`, `aria-expanded`, `aria-controls`, `aria-invalid`, `aria-live` / `role="status"` / `role="alert"`.
+- Keep `aria-*` in sync with real UI state (`aria-expanded` must match open/closed).
+- Never rely on ARIA alone for behavior — keyboard handlers and focus still required.
+
+## Forms
+
+- Every input needs a visible `<label>` (or `aria-label` when a visible label is intentionally omitted).
+- Associate errors with `aria-describedby` + `aria-invalid`.
+- Do not use placeholder as the only label.
+- Disable submit during pending only when double-submit is harmful; still announce status.
+
+```tsx
+<label htmlFor="email">Email</label>
+<input
+  id="email"
+  aria-invalid={hasError}
+  aria-describedby={hasError ? 'email-error' : undefined}
+/>
+{hasError && (
+  <p id="email-error" role="alert">
+    Enter a valid email
+  </p>
+)}
+```
+
+## Async and live updates
+
+- Announce loading / saving / completion with `role="status"` or `aria-live="polite"`.
+- Use `role="alert"` (or assertive live region) for important errors.
+- Keep previous content visible while refreshing when possible; do not blank the whole page without announcement.
+- Align with component-async rules: pending, success, empty, and error must each be perceivable.
+
+## Motion, color, and contrast
+
+- Do not convey meaning with color alone; add text or icons.
+- Aim for WCAG AA contrast for text and essential UI.
+- Respect `prefers-reduced-motion` for non-essential animation.
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  .logo {
+    animation: none;
+  }
+}
+```
+
+## Testing accessibility
+
+- Query by role and accessible name (`getByRole`, `getByLabelText`) — same as unit-test rules.
+- Assert keyboard paths for custom widgets (open, close, focus return).
+- Assert disabled / expanded / invalid states via accessible attributes, not class names.
+- Cover icon-only controls by accessible name.
+- Manual pass: keyboard-only tab through the flow; check focus order and announcements.
+
+## Anti-patterns
+
+- Clickable `div`/`span` without button/link semantics and keyboard support
+- Missing accessible name on icon-only controls
+- Broken or removed focus rings with no `:focus-visible` replacement
+- Dialogs that do not move or restore focus
+- Stale ARIA (`aria-expanded={true}` while closed)
+- Placeholder-only “labels”
+- Color-only status (red/green with no text)
+- ARIA used to paper over incorrect HTML
