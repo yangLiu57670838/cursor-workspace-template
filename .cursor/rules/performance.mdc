@@ -1,0 +1,74 @@
+---
+description: React performance standards — re-renders, state placement, memoization, lists, async UI, and measurement before optimization
+globs: "**/*.tsx,**/hooks/**/*.ts,**/hooks/**/*.tsx"
+alwaysApply: false
+---
+
+# React Performance
+
+Optimize for perceived speed and main-thread work. Prefer correct architecture over premature memoization. Measure before adding complexity.
+
+## Fix structure before memoizing
+
+Most “slow React” is unnecessary re-renders or work on every render. Address in this order:
+
+1. **Move state down** — keep state as close to consumers as possible
+2. **Lift content up / children composition** — pass stable `children` so parents re-render without re-rendering heavy subtrees
+3. **Split components** — isolate high-frequency updates (input, selection, pointer) from slow trees
+4. **Only then memoize** — `React.memo`, `useMemo`, `useCallback` when profiling shows a win
+
+Do not add `useMemo` / `useCallback` by default. They add dependency noise and rarely help unless a child is memoized or a dependency identity is required.
+
+```tsx
+// ❌ BAD — memoizing everything “just in case”
+const value = useMemo(() => ({ id }), [id])
+const onClick = useCallback(() => save(id), [id])
+
+// ✅ GOOD — plain values; memoize only when a measured re-render cost exists
+const value = { id }
+```
+
+## State and derived data
+
+- Derive values during render when cheap: `const filtered = items.filter(...)`.
+- Do not mirror props into state and keep them in sync with effects.
+- Prefer refs or external stores for high-frequency writes (cursor, drag, animation frame) that should not trigger React renders.
+- Debounce expensive side effects (persistence, search, network) — not the keystroke render itself.
+
+## Lists and large trees
+
+- Use stable, unique `key`s (prefer ids over index unless the list is static).
+- Avoid rendering huge lists whole when the UI only needs a viewport — virtualize when profiling shows list cost.
+- Do not put new object/array literals into Context `value` or memoized child props on every render without need.
+
+## Context and shared state
+
+Follow `contextAPI` rules: split high-frequency values from stable configuration. A single giant provider value forces broad re-renders.
+
+## Async and interaction performance
+
+- Keep the UI responsive during saves and loads: show status without blocking typing.
+- Use `startTransition` for non-urgent updates that can interrupt typing or interaction.
+- Use `useDeferredValue` for expensive derived UI driven by fast input.
+- Cancel stale async work on unmount or dependency change (see `component-async`).
+
+## Loading less work
+
+- Lazy-load heavy routes/panels with `React.lazy` + `Suspense` when they are not needed for first paint.
+- Avoid importing large libraries into the critical path of simple surfaces.
+- Prefer CSS for visual transitions over JS animation loops unless interaction requires it.
+
+## Measure, then claim a win
+
+- Use React Profiler / Chrome Performance before and after changes.
+- Optimize user-visible jank (input lag, scroll, toolbar clicks) over micro-benchmarks.
+- Do not “fix” performance with speculative memoization that obscures code.
+
+## Anti-patterns
+
+- Blanket `useMemo` / `useCallback` / `React.memo` with no evidence
+- Storing derived data in state + syncing via `useEffect`
+- Context value recreating large objects every render
+- Index keys on reorderable lists
+- Running expensive filters/sorts in effects instead of render (or a worker when truly heavy)
+- Blocking the main thread with sync `localStorage` / JSON work on every keystroke
