@@ -1,0 +1,78 @@
+---
+description: React component security — XSS, unsafe HTML/URLs, secrets, third-party content, and safe rendering defaults
+globs: "**/*.tsx"
+alwaysApply: false
+---
+
+# React Component Security
+
+Treat every value that crosses into the DOM, URLs, or persistence as untrusted until proven otherwise. React escapes text by default — do not bypass that without a deliberate, reviewed reason.
+
+## Default: let React escape
+
+- Render user or external strings as text children or safe props. Do not build HTML strings in components.
+- Prefer `{value}` over string-concatenated markup.
+- Never use `eval`, `new Function`, or inject executable strings from props/storage/API into the page.
+
+```tsx
+// ❌ BAD — interprets markup
+<div dangerouslySetInnerHTML={{ __html: userHtml }} />
+
+// ✅ GOOD — React escapes
+<p>{userText}</p>
+```
+
+## `dangerouslySetInnerHTML` and rich content
+
+- Avoid `dangerouslySetInnerHTML` in app UI. If unavoidable, sanitize with a maintained library on a strict allowlist; document why.
+- Editor HTML / JSON from `localStorage` or the network is untrusted: validate shape (see storage rules) and rely on the editor’s own schema — do not rehydrate arbitrary HTML into the DOM outside that path.
+- Do not pass unsanitized HTML through props named `html`, `markup`, or similar into presentational components.
+
+## URLs and navigation
+
+- Validate `href` / `src` before use. Block `javascript:`, `data:` (unless explicitly required and reviewed), and other dangerous schemes.
+- User-controlled links: prefer allowlisting `https:` (and `http:` only if product requires it).
+- `target="_blank"` links must include `rel="noopener noreferrer"` to avoid tab-nabbing.
+- Do not redirect to a raw user-supplied URL without same-origin or allowlist checks.
+
+```tsx
+// ❌ BAD
+<a href={userUrl} target="_blank">Open</a>
+
+// ✅ GOOD
+<a href={safeHttpsUrl} target="_blank" rel="noopener noreferrer">
+  Open
+</a>
+```
+
+## Secrets and sensitive data
+
+- Never hardcode API keys, tokens, or credentials in components or client bundles.
+- Do not put secrets in `localStorage`, props, or Redux/Context that any script on the origin can read.
+- Assume anything in the browser is visible to XSS — keep privileged work on the server/BFF.
+
+## Props and composition boundaries
+
+- Do not spread untrusted objects onto DOM nodes (`<div {...userProps} />`) — attackers can inject `dangerouslySetInnerHTML`, event handlers, or fake `children`.
+- Whitelist known props at boundaries; strip or ignore unknown keys.
+- Be careful with `children` from untrusted sources when a parent uses `dangerouslySetInnerHTML` or clones elements with extra props.
+
+## Third-party and embeds
+
+- Prefer first-party UI over embedding arbitrary iframes. If embedding, use a strict `sandbox` and a fixed allowlist of origins.
+- Do not load scripts or styles from user-controlled URLs.
+- Treat `postMessage` payloads as untrusted: verify `event.origin` and validate message shape.
+
+## Persistence and XSS amplification
+
+- Stored XSS matters here: content saved to `localStorage` and restored later is still attacker-controlled if the user ever pasted or imported malicious input.
+- Load paths must validate; render paths must not turn stored strings into HTML without sanitization.
+
+## Anti-patterns
+
+- `dangerouslySetInnerHTML` with unsanitized or “mostly trusted” strings
+- `<div {...propsFromApi} />` or uncontrolled prop spreads onto host elements
+- `javascript:` / unvalidated URLs in `href` / `src`
+- `target="_blank"` without `rel="noopener noreferrer"`
+- Secrets or session tokens in client storage or component source
+- Trusting `localStorage` / query params / hash as safe to render as HTML
